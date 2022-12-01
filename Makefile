@@ -1,6 +1,6 @@
 .PHONY: all mod build
 
-OUTPUT = ecs-task
+OUTPUT = ecs-task2
 OUTDIR = bin
 BUILD_CMD = go build -a -tags netgo -installsuffix netgo -ldflags \
 " \

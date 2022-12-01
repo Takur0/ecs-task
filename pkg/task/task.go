@@ -71,6 +71,8 @@ import (
 type Task struct {
 	awsECS ecsiface.ECSAPI
 
+	// Environment
+	Environment []*ecs.KeyValuePair
 	// ECS Cluster where you want to run the task.
 	Cluster string
 	// Container name which you want to run. Sometimes Task Definition has some container. So this package have to determine the container for run task.
@@ -102,7 +104,7 @@ type Task struct {
 // NewTask returns a new Task struct, and initialize aws ecs API client.
 // If you want to run the task as Fargate, please provide fargate flag to true, and your subnet IDs for awsvpc.
 // If you don't want to run the task as Fargate, please provide empty string for subnetIDs.
-func NewTask(cluster, container, taskDefinitionName, command string, fargate bool, subnetIDs, securityGroupIDs, platformVersion string, timeout time.Duration, timestampFormat, profile, region string) (*Task, error) {
+func NewTask(cluster, container, taskDefinitionName, command, environment string, fargate bool, subnetIDs, securityGroupIDs, platformVersion string, timeout time.Duration, timestampFormat, profile, region string) (*Task, error) {
 	if cluster == "" {
 		return nil, errors.New("Cluster name is required")
 	}
@@ -113,7 +115,7 @@ func NewTask(cluster, container, taskDefinitionName, command string, fargate boo
 		return nil, errors.New("Task definition is required")
 	}
 	if command == "" {
-		return nil, errors.New("Comamnd is reqired")
+		return nil, errors.New("Command is required")
 	}
 	awsECS := ecs.New(session.New(), newConfig(profile, region))
 	taskDefinition := NewTaskDefinition(profile, region)
@@ -145,6 +147,18 @@ func NewTask(cluster, container, taskDefinitionName, command string, fargate boo
 		}
 	}
 
+	envKeyValuePair := []*ecs.KeyValuePair{}
+
+	for _, s := range strings.Split(environment, " ") {
+		if strings.ContainsAny(s, "=") {
+			kv := strings.Split(s, "=")
+			pair := ecs.KeyValuePair{}
+			pair.SetName(kv[0])
+			pair.SetValue(kv[1])
+			envKeyValuePair = append(envKeyValuePair, &pair)
+		}
+	}
+
 	return &Task{
 		awsECS:             awsECS,
 		Cluster:            cluster,
@@ -152,6 +166,7 @@ func NewTask(cluster, container, taskDefinitionName, command string, fargate boo
 		TaskDefinitionName: taskDefinitionName,
 		taskDefinition:     taskDefinition,
 		Command:            cmd,
+		Environment:        envKeyValuePair,
 		Timeout:            timeout,
 		LaunchType:         launchType,
 		Subnets:            subnets,
@@ -167,8 +182,9 @@ func NewTask(cluster, container, taskDefinitionName, command string, fargate boo
 // RunTask calls run-task API. This function does not wait to completion of the task.
 func (t *Task) RunTask(ctx context.Context, taskDefinition *ecs.TaskDefinition) ([]*ecs.Task, error) {
 	containerOverride := &ecs.ContainerOverride{
-		Command: t.Command,
-		Name:    aws.String(t.Container),
+		Environment: t.Environment,
+		Command:     t.Command,
+		Name:        aws.String(t.Container),
 	}
 
 	override := &ecs.TaskOverride{
